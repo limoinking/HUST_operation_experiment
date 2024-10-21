@@ -75,6 +75,37 @@ elf_status elf_load(elf_ctx *ctx) {
   return EL_OK;
 }
 
+
+elf_status elf_load_symbol(elf_ctx *ctx) {
+  elf_section_header sh;  // 定义一个变量用于存储节头信息
+  int i, off;             // 循环变量和偏移量
+  int strsize = 0;        // 字符串表的大小
+
+  // 加载符号表和字符串表
+  for (i = 0, off = ctx->ehdr.shoff; i < ctx->ehdr.shnum; i++, off += sizeof(elf_section_header)) {
+    // 读取每个节的头信息
+    if (elf_fpread(ctx, (void *)&sh, sizeof(sh), off) != sizeof(sh)) {
+      return EL_EIO;  // 如果读取失败，返回输入输出错误状态
+    }
+
+    // 检查节的类型
+    if (sh.sh_type == 2) {  // 如果是符号表 ,SHT_SYMTAB == 2
+      // 符号是按顺序存放的
+      if (elf_fpread(ctx, &ctx->symbols, sh.sh_size, sh.sh_offset) != sh.sh_size) {
+        return EL_EIO;  // 如果读取符号表失败，返回输入输出错误状态
+      }
+      ctx->symbols_count = sh.sh_size / sizeof(elf_symbol);  // 计算符号的数量
+    } else if (sh.sh_type == 3) {  // 如果是字符串表,SHT_STRTAB == 3
+      if (elf_fpread(ctx, &ctx->strtable + strsize, sh.sh_size, sh.sh_offset) != sh.sh_size) {
+        return EL_EIO;  // 如果读取字符串表失败，返回输入输出错误状态
+      }
+      strsize += sh.sh_size;  // 更新字符串表的大小，以便可能有多个字符串表
+    }
+  }
+  return EL_OK;  // 如果加载成功，返回正常状态
+}
+
+
 typedef union {
   uint64 buf[MAX_CMDLINE_ARGS];
   char *argv[MAX_CMDLINE_ARGS];
@@ -113,8 +144,6 @@ void load_bincode_from_host_elf(process *p) {
 
   sprint("Application: %s\n", arg_bug_msg.argv[0]);
 
-  //elf loading. elf_ctx is defined in kernel/elf.h, used to track the loading process.
-  elf_ctx elfloader;
   // elf_info is defined above, used to tie the elf file and its corresponding process.
   elf_info info;
 
@@ -124,15 +153,16 @@ void load_bincode_from_host_elf(process *p) {
   if (IS_ERR_VALUE(info.f)) panic("Fail on openning the input application program.\n");
 
   // init elfloader context. elf_init() is defined above.
-  if (elf_init(&elfloader, &info) != EL_OK)
+  if (elf_init(&elfsymbol, &info) != EL_OK)
     panic("fail to init elfloader.\n");
 
   // load elf. elf_load() is defined above.
-  if (elf_load(&elfloader) != EL_OK) panic("Fail on loading elf.\n");
+  if (elf_load(&elfsymbol) != EL_OK) panic("Fail on loading elf.\n");
 
   // entry (virtual, also physical in lab1_x) address
-  p->trapframe->epc = elfloader.ehdr.entry;
+  p->trapframe->epc = elfsymbol.ehdr.entry;
 
+  if (elf_load_symbol(&elfsymbol) != EL_OK) panic("Fail on loading elf symbols.\n");
   // close the host spike file
   spike_file_close( info.f );
 
