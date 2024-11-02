@@ -25,18 +25,8 @@ static void handle_syscall(trapframe *tf) {
   // kernel/syscall.c) to conduct real operations of the kernel side for a syscall.
   // IMPORTANT: return value should be returned to user app, or else, you will encounter
   // problems in later experiments!
-  long a0 = tf->regs.a0; // 系统调用编号
-  long a1 = tf->regs.a1; // 参数1
-  long a2 = tf->regs.a2; // 参数2
-  long a3 = tf->regs.a3; // 参数3
-  long a4 = tf->regs.a4; // 参数4
-  long a5 = tf->regs.a5; // 参数5
-  long a6 = tf->regs.a6; // 参数6
-  long a7 = tf->regs.a7; // 参数7
-
-  // 调用 do_syscall，并将返回值保存到 a0 寄存器中以返回给用户空间
-  tf->regs.a0 = do_syscall(a0, a1, a2, a3, a4, a5, a6, a7);
-
+  //panic( "call do_syscall to accomplish the syscall and lab1_1 here.\n" );
+  tf->regs.a0 = do_syscall(tf->regs.a0,tf->regs.a1,tf->regs.a2,tf->regs.a3,tf->regs.a4,tf->regs.a5,tf->regs.a6,tf->regs.a7);
 }
 
 //
@@ -47,12 +37,12 @@ static uint64 g_ticks = 0;
 //
 void handle_mtimer_trap() {
   sprint("Ticks %d\n", g_ticks);
+  // TODO (lab1_3): increase g_ticks to record this "tick", and then clear the "SIP"
+  // field in sip register.
+  // hint: use write_csr to disable the SIP_SSIP bit in sip.
+  //panic( "lab1_3: increase g_ticks by one, and clear SIP field in sip register.\n" );
   g_ticks += 1;
-  // 清除 SIP 寄存器中的 SIP_SSIP 位
-  // 使用 write_csr 禁用 SIP_SSIP 位
-  write_csr(sip, read_csr(sip) & ~SIP_SSIP);
-
-
+  write_csr(sip, 0);
 }
 
 //
@@ -68,8 +58,13 @@ void handle_user_page_fault(uint64 mcause, uint64 sepc, uint64 stval) {
       // dynamically increase application stack.
       // hint: first allocate a new physical page, and then, maps the new page to the
       // virtual address that causes the page fault.
-      panic( "You need to implement the operations that actually handle the page fault in lab2_3.\n" );
-
+      //panic( "You need to implement the operations that actually handle the page fault in lab2_3.\n" );
+      map_pages(
+        current->pagetable,
+        ROUNDDOWN(stval,PGSIZE),
+        PGSIZE,
+        (uint64)alloc_page(),
+        prot_to_type(PROT_READ|PROT_WRITE,1));
       break;
     default:
       sprint("unknown page fault.\n");
