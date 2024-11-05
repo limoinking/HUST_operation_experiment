@@ -12,6 +12,7 @@
 
 #include "spike_interface/spike_utils.h"
 
+# define NO_CAUSE_STORE_PAGE_FAULT 1037
 //
 // handling the syscalls. will call do_syscall() defined in kernel/syscall.c
 //
@@ -53,19 +54,23 @@ void handle_mtimer_trap() {
 void handle_user_page_fault(uint64 mcause, uint64 sepc, uint64 stval) {
   sprint("handle_page_fault: %lx\n", stval);
   switch (mcause) {
-    case CAUSE_STORE_PAGE_FAULT:
-      // TODO (lab2_3): implement the operations that solve the page fault to
-      // dynamically increase application stack.
-      // hint: first allocate a new physical page, and then, maps the new page to the
-      // virtual address that causes the page fault.
-      //panic( "You need to implement the operations that actually handle the page fault in lab2_3.\n" );
-      map_pages(
-        current->pagetable,
-        ROUNDDOWN(stval,PGSIZE),
-        PGSIZE,
-        (uint64)alloc_page(),
-        prot_to_type(PROT_READ|PROT_WRITE,1));
+    case NO_CAUSE_STORE_PAGE_FAULT:
+        map_pages(
+        current->pagetable,                         // 当前进程的页表
+        ROUNDDOWN(stval, PGSIZE),                   // 将虚拟地址对齐到页面边界
+        PGSIZE,                                     // 映射的大小（一个页面）
+        (uint64)alloc_page(),                       // 分配新的物理页面
+        prot_to_type(PROT_READ | PROT_WRITE, 1)     // 设置权限为可读写
+      );
       break;
+    case CAUSE_STORE_PAGE_FAULT:
+        if((stval - current->trapframe->regs.sp) < 32) {
+            user_vm_map((pagetable_t)current->pagetable, stval - stval%PGSIZE, PGSIZE, (uint64)alloc_page(), prot_to_type(PROT_WRITE | PROT_READ, 1));
+        } else {
+            sprint("this address is not available!\n");
+            shutdown(-1);
+        }
+          break;
     default:
       sprint("unknown page fault.\n");
       break;
